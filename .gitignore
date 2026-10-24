@@ -1,6 +1,8 @@
 .env
 credentials.json
 token.pickle
+chat_ids.json
+notified_events.json
 __pycache__/
 *.pyc
 *.pyo

@@ -9,10 +9,11 @@ Komutlar:
   /iptal    → mevcut işlemi iptal et
 """
 
+import json
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import dateparser
 
@@ -24,6 +25,7 @@ from telegram.ext import (
     CommandHandler,
     ConversationHandler,
     MessageHandler,
+    TypeHandler,
     filters,
     ContextTypes,
 )
@@ -47,6 +49,84 @@ EDIT_PICK_FIELD, EDIT_START, EDIT_END, EDIT_ADD_EMAILS = range(10, 14)
 
 TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+CHAT_IDS_FILE = "chat_ids.json"
+NOTIFIED_FILE = "notified_events.json"
+ISTANBUL = timezone(timedelta(hours=3))
+
+
+def _load_json(path, default):
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+    return default
+
+
+def _save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+
+async def track_chat(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_chat:
+        ids = set(_load_json(CHAT_IDS_FILE, []))
+        ids.add(update.effective_chat.id)
+        _save_json(CHAT_IDS_FILE, list(ids))
+
+
+async def notify_upcoming(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Her dakika çalışır; 28-32 dk içinde başlayan etkinlikler için bildirim gönderir."""
+    chat_ids = _load_json(CHAT_IDS_FILE, [])
+    if not chat_ids:
+        return
+
+    notified = set(_load_json(NOTIFIED_FILE, []))
+
+    try:
+        events = list_upcoming_events(20)
+    except Exception as e:
+        logger.error("Bildirim kontrolü hatası: %s", e)
+        return
+
+    now = datetime.now(timezone.utc)
+    window_start = now + timedelta(minutes=28)
+    window_end = now + timedelta(minutes=32)
+    newly_notified = set()
+
+    for event in events:
+        event_id = event.get("id")
+        if event_id in notified:
+            continue
+        start_str = event.get("start", {}).get("dateTime")
+        if not start_str:
+            continue
+        start_dt = datetime.fromisoformat(start_str)
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        if not (window_start <= start_dt <= window_end):
+            continue
+
+        title = event.get("summary", "(isimsiz)")
+        time_str = start_dt.astimezone(ISTANBUL).strftime("%H:%M")
+        meet = (
+            event.get("conferenceData", {})
+            .get("entryPoints", [{}])[0]
+            .get("uri", "")
+        )
+        msg = f"⏰ *30 dakika sonra etkinlik var!*\n\n📌 *{title}*\n🕐 {time_str}"
+        if meet:
+            msg += f"\n\n🔗 [Toplantıya katıl]({meet})"
+
+        for chat_id in chat_ids:
+            try:
+                await ctx.bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
+            except Exception as e:
+                logger.error("Bildirim gönderilemedi %s: %s", chat_id, e)
+
+        newly_notified.add(event_id)
+
+    if newly_notified:
+        _save_json(NOTIFIED_FILE, list(notified | newly_notified))
 
 MENU = (
     "\n\n"
@@ -526,12 +606,15 @@ def main() -> None:
         allow_reentry=True,
     )
 
+    app.add_handler(TypeHandler(Update, track_chat), group=-1)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("listele", listele_cmd))
     app.add_handler(CommandHandler("sil", sil_cmd))
     app.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:"))
     app.add_handler(planla_conv)
     app.add_handler(duzenle_conv)
+
+    app.job_queue.run_repeating(notify_upcoming, interval=60, first=10)
 
     logger.info("Bot başlatılıyor...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
