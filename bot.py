@@ -106,8 +106,18 @@ async def listele_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not events:
             await update.message.reply_text("📭 Yaklaşan etkinlik bulunamadı.")
         else:
-            lines = [f"{i+1}. {_event_summary(e)}" for i, e in enumerate(events)]
-            await update.message.reply_text("📅 *Yaklaşan etkinlikler:*\n\n" + "\n".join(lines), parse_mode="Markdown")
+            lines = []
+            for i, e in enumerate(events):
+                line = f"{i+1}. {_event_summary(e)}"
+                meet = (
+                    e.get("conferenceData", {})
+                    .get("entryPoints", [{}])[0]
+                    .get("uri", "")
+                )
+                if meet:
+                    line += f"\n    🔗 {meet}"
+                lines.append(line)
+            await update.message.reply_text("📅 *Yaklaşan etkinlikler:*\n\n" + "\n\n".join(lines), parse_mode="Markdown")
     except Exception as e:
         logger.error("list error: %s", e)
         await update.message.reply_text(f"❌ Hata: {e}")
