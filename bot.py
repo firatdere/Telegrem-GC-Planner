@@ -443,27 +443,13 @@ async def receive_start_time(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     if not TIME_RE.match(text):
         await update.message.reply_text("❌ Geçersiz format. SS:DD formatında girin (örn: 14:00):")
         return START_TIME
-    ctx.user_data["start_time"] = text
-    await update.message.reply_text("⏰ Bitiş saatini girin (SS:DD, örn: 15:00):")
-    return END_TIME
-
-
-async def receive_end_time(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text.strip()
-    if not TIME_RE.match(text):
-        await update.message.reply_text("❌ Geçersiz format. SS:DD formatında girin (örn: 15:00):")
-        return END_TIME
 
     date = ctx.user_data["date"]
-    start = ctx.user_data["start_time"]
-    start_dt = datetime.strptime(f"{date} {start}", "%d.%m.%Y %H:%M")
-    end_dt = datetime.strptime(f"{date} {text}", "%d.%m.%Y %H:%M")
+    start_dt = datetime.strptime(f"{date} {text}", "%d.%m.%Y %H:%M")
+    end_dt = start_dt + timedelta(hours=1)
+    ctx.user_data["start_time"] = text
+    ctx.user_data["end_time"] = end_dt.strftime("%H:%M")
 
-    if end_dt <= start_dt:
-        await update.message.reply_text("❌ Bitiş saati başlangıç saatinden sonra olmalı. Tekrar girin:")
-        return END_TIME
-
-    ctx.user_data["end_time"] = text
     await update.message.reply_text(
         "📧 Davet göndermek istediğiniz e-posta adreslerini girin.\n"
         "Birden fazla adres için virgülle ayırın:\n"
@@ -583,7 +569,6 @@ def main() -> None:
             TITLE:      [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_title)],
             DATE:       [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_date)],
             START_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_start_time)],
-            END_TIME:   [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_end_time)],
             EMAILS:     [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_emails)],
         },
         fallbacks=_common_fallbacks,
