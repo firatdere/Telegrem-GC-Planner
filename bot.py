@@ -449,6 +449,28 @@ async def iptal(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def unexpected_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """Konuşma ortasında başka komut gelirse iptal edip yeniden yönlendir."""
+    ctx.user_data.clear()
+    cmd = update.message.text.split()[0] if update.message.text else ""
+    await update.message.reply_text(
+        f"⚠️ Aktif işlem iptal edildi. `{cmd}` komutu şimdi işleniyor...",
+        parse_mode="Markdown",
+    )
+    # Gelen komutu ilgili handler'a yönlendir
+    dispatch = {
+        "/planla": planla,
+        "/listele": listele_cmd,
+        "/sil": sil_cmd,
+        "/duzenle": duzenle_cmd,
+    }
+    handler = dispatch.get(cmd)
+    if handler:
+        return await handler(update, ctx)
+    await send_menu(update)
+    return ConversationHandler.END
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -465,6 +487,14 @@ def main() -> None:
         .build()
     )
 
+    _common_fallbacks = [
+        CommandHandler("iptal", iptal),
+        CommandHandler("planla", unexpected_command),
+        CommandHandler("listele", unexpected_command),
+        CommandHandler("sil", unexpected_command),
+        CommandHandler("duzenle", unexpected_command),
+    ]
+
     planla_conv = ConversationHandler(
         entry_points=[CommandHandler("planla", planla)],
         states={
@@ -474,7 +504,8 @@ def main() -> None:
             END_TIME:   [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_end_time)],
             EMAILS:     [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_emails)],
         },
-        fallbacks=[CommandHandler("iptal", iptal)],
+        fallbacks=_common_fallbacks,
+        allow_reentry=True,
     )
 
     duzenle_conv = ConversationHandler(
@@ -488,8 +519,9 @@ def main() -> None:
             EDIT_END:        [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_end_time)],
             EDIT_ADD_EMAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_add_emails)],
         },
-        fallbacks=[CommandHandler("iptal", iptal)],
+        fallbacks=_common_fallbacks,
         per_message=False,
+        allow_reentry=True,
     )
 
     app.add_handler(CommandHandler("start", start))
