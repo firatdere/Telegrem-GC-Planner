@@ -55,7 +55,7 @@ MENU = (
     "/planla — yeni etkinlik oluştur\n"
     "/listele — yaklaşan etkinlikleri gör\n"
     "/sil — etkinlik sil\n"
-    "/duzenle — etkinlik düzenle\n"
+    "/duzenle — etkinlik düzenle _(ü değil, düz u)_\n"
     "/iptal — işlemi iptal et"
 )
 
@@ -88,6 +88,15 @@ def _events_keyboard(events: list[dict], prefix: str) -> InlineKeyboardMarkup:
 
 
 # ── /basla ────────────────────────────────────────────────────────────────────
+
+async def duzenle_redirect(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "⚠️ Komut: `/duzenle` _(ü değil, düz u harfi)_\n"
+        "Telegram aksan harflerini komutlarda desteklemiyor.",
+        parse_mode="Markdown",
+    )
+    await send_menu(update)
+
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
@@ -484,6 +493,7 @@ def main() -> None:
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("düzenle", duzenle_redirect))
     app.add_handler(CommandHandler("listele", listele_cmd))
     app.add_handler(CommandHandler("sil", sil_cmd))
     app.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:"))
