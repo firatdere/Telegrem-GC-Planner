@@ -15,6 +15,8 @@ import os
 import re
 from datetime import datetime
 
+import dateparser
+
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
@@ -34,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 TITLE, DATE, START_TIME, END_TIME, EMAILS = range(5)
 
-DATE_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
 TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -53,22 +54,31 @@ async def plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def receive_title(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     ctx.user_data["title"] = update.message.text.strip()
-    await update.message.reply_text("📅 Tarihi girin (GG.AA.YYYY formatında, örn: 25.10.2024):")
+    await update.message.reply_text(
+        "📅 Tarihi girin:\n"
+        "Örn: yarın · Pazartesi · 25 Ekim · 25.10.2024"
+    )
     return DATE
 
 
 async def receive_date(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
-    if not DATE_RE.match(text):
-        await update.message.reply_text("❌ Geçersiz format. Lütfen GG.AA.YYYY formatında girin (örn: 25.10.2024):")
+    parsed = dateparser.parse(
+        text,
+        languages=["tr", "en"],
+        settings={"PREFER_DATES_FROM": "future", "RETURN_AS_TIMEZONE_AWARE": False},
+    )
+    if parsed is None:
+        await update.message.reply_text(
+            "❌ Tarihi anlayamadım. Tekrar deneyin:\n"
+            "Örn: yarın · Pazartesi · 25 Ekim · 25.10.2024"
+        )
         return DATE
-    try:
-        datetime.strptime(text, "%d.%m.%Y")
-    except ValueError:
-        await update.message.reply_text("❌ Geçersiz tarih. Tekrar deneyin:")
-        return DATE
-    ctx.user_data["date"] = text
-    await update.message.reply_text("⏰ Başlangıç saatini girin (SS:DD formatında, örn: 14:00):")
+    ctx.user_data["date"] = parsed.strftime("%d.%m.%Y")
+    await update.message.reply_text(
+        f"✅ {parsed.strftime('%d %B %Y')} olarak anladım.\n"
+        "⏰ Başlangıç saatini girin (SS:DD, örn: 14:00):"
+    )
     return START_TIME
 
 
